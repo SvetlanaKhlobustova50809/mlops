@@ -1,0 +1,156 @@
+# CI/CD для ML-проекта.
+#
+# CI (на каждый PR): линт -> тесты кода -> валидация данных -> обучение ->
+#                    quality gate -> проверка дрейфа -> сборка образа.
+# CD: на тег v* образ пушится в registry (continuous delivery); деплой в prod
+#     требует ручного approve через GitHub Environment. Это граница между
+#     continuous delivery и continuous deployment: убрать шаг approve ->
+#     получится continuous deployment.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+jobs:
+  # ------------------------- 1. качество кода -------------------------------
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.7.4
+      - name: Линт
+        run: ruff check src tests
+      - name: Проверить, что все зависимости рантайма запиннены
+        run: |
+          grep -vE '^\s*(#|$)' requirements-serve.txt | while read -r line; do
+            echo "$line" | grep -q '==' || { echo "НЕ ЗАПИННЕНО: $line"; exit 1; }
+          done
+          echo "все зависимости зафиксированы на точные версии"
+
+  # ------------- 2. данные -> обучение -> валидация -> артефакты ------------
+  pipeline:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Установить зависимости
+        run: pip install -r requirements.txt
+
+      - name: Забрать версию данных из DVC remote
+        # В реальном проекте данные приходят из S3, а не скачиваются с Kaggle:
+        # dvc pull берёт ровно ту версию, что указана в dvc.lock этого коммита.
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: dvc pull || python src/download_data.py
+
+      - name: Валидация данных (схема, типы, диапазоны, дубликаты)
+        run: python src/prepare_data.py
+
+      - name: Обучение с логированием в MLflow
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+        run: python src/train.py
+
+      - name: Quality gate -- не пускать модель хуже порога и хуже baseline
+        run: python src/evaluate.py
+
+      - name: Тесты кода, данных, модели и API
+        run: python -m pytest
+
+      - name: Проверка дрейфа данных (Evidently)
+        run: python src/drift_report.py
+
+      - name: Опубликовать артефакты прогона
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ml-artifacts
+          path: |
+            metrics/metrics.json
+            models/model_card.json
+            reports/
+          retention-days: 30
+
+  # ------------------------- 3. сборка образа -------------------------------
+  build-image:
+    runs-on: ubuntu-latest
+    needs: pipeline
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Войти в registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Собрать (и на теге -- запушить) образ
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # push только на теге -> в registry попадают только релизные версии
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: |
+            ghcr.io/${{ github.repository }}/telco-churn-service:${{ github.sha }}
+            ghcr.io/${{ github.repository }}/telco-churn-service:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Сканирование образа на уязвимости
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/telco-churn-service:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: "0"
+
+  # ------------------------ 4. деплой в production --------------------------
+  deploy:
+    # Запускается только на теге. environment: production -> GitHub требует
+    # ручного approve. Это continuous DELIVERY.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: build-image
+    environment:
+      name: production
+      url: https://ml.example.com/churn
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Canary 10% -> новая версия модели
+        run: |
+          kubectl -n ml-prod set image deploy/churn-api-canary \
+            api=ghcr.io/${{ github.repository }}/telco-churn-service:${{ github.ref_name }}
+          kubectl -n ml-prod rollout status deploy/churn-api-canary --timeout=5m
+
+      - name: Проверить canary по метрикам 15 минут
+        run: ./scripts/check_canary.sh      # error-rate, p99 latency, mean_probability
+
+      - name: Полный rolling update основного Deployment
+        run: |
+          kubectl -n ml-prod set image deploy/churn-api \
+            api=ghcr.io/${{ github.repository }}/telco-churn-service:${{ github.ref_name }}
+          kubectl -n ml-prod rollout status deploy/churn-api --timeout=10m
+
+      - name: Автоматический откат при неудаче
+        if: failure()
+        run: kubectl -n ml-prod rollout undo deploy/churn-api

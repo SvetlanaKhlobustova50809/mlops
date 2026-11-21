@@ -1,0 +1,25 @@
+# CronJob мониторинга дрейфа: ежедневно сравнивает свежий трафик с reference
+# через Evidently и при обнаружении дрейфа возвращает код 1 -> алерт в Alertmanager.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: churn-drift-monitor
+  namespace: ml-prod
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: evidently
+              image: telco-churn-trainer:1.0.0
+              command: ["python", "src/drift_report.py", "--fail-on-drift"]
+              envFrom:
+                - configMapRef: {name: churn-config}
+                - secretRef: {name: churn-secrets}
+              resources:
+                requests: {cpu: "500m", memory: "1Gi"}
+                limits:   {cpu: "2", memory: "4Gi"}

@@ -1,0 +1,16 @@
+# Service -- стабильное DNS-имя и балансировка трафика между Pod'ами.
+# Эндпоинты формируются только из Pod'ов, прошедших readinessProbe.
+apiVersion: v1
+kind: Service
+metadata:
+  name: churn-api
+  namespace: ml-prod
+  labels: {app: churn-api}
+spec:
+  type: ClusterIP
+  selector:
+    app: churn-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

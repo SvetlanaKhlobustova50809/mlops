@@ -1,0 +1,13 @@
+# ConfigMap -- неконфиденциальная конфигурация модели (порог, уровень логов,
+# URI реестра). Меняем порог решения -> правим ConfigMap и перезапускаем Pod'ы,
+# без пересборки образа. Образ остаётся неизменным артефактом.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: churn-config
+  namespace: ml-prod
+data:
+  THRESHOLD: "0.5"
+  LOG_LEVEL: "INFO"
+  WORKERS: "1"
+  MLFLOW_TRACKING_URI: "http://mlflow.ml-prod.svc.cluster.local:5000"

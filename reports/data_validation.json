@@ -1,0 +1,12 @@
+{
+  "n_rows": 7043,
+  "n_cols": 21,
+  "errors": [],
+  "warnings": [],
+  "null_counts": {},
+  "target_distribution": {
+    "No": 0.7346,
+    "Yes": 0.2654
+  },
+  "errors_post_clean": []
+}

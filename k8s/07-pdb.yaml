@@ -1,0 +1,11 @@
+# PodDisruptionBudget -- гарантия доступности при плановых работах
+# (drain узла, обновление кластера): минимум 2 Pod'а всегда живы.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: churn-api
+  namespace: ml-prod
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: churn-api}

@@ -1,0 +1,38 @@
+# CronJob -- регулярное переобучение (последняя фаза жизненного цикла).
+# Job прогоняет весь пайплайн: dvc pull -> prepare -> train -> evaluate.
+# Гейт evaluate.py возвращает код != 0, если модель хуже baseline -> Job падает,
+# и плохая модель не попадает в реестр.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: churn-retrain
+  namespace: ml-prod
+spec:
+  schedule: "0 2 * * 1"          # каждый понедельник в 02:00
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: trainer
+              image: telco-churn-trainer:1.0.0
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  dvc pull
+                  python src/prepare_data.py
+                  python src/train.py --register
+                  python src/evaluate.py
+                  python src/drift_report.py
+              envFrom:
+                - configMapRef: {name: churn-config}
+                - secretRef: {name: churn-secrets}
+              resources:
+                requests: {cpu: "1", memory: "2Gi"}
+                limits:   {cpu: "4", memory: "8Gi"}

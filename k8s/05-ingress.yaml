@@ -1,0 +1,26 @@
+# Ingress -- внешняя точка входа (HTTPS, домен, маршрутизация по пути).
+# Аннотации canary у nginx-ingress дают постепенный выпуск по % трафика
+# без service mesh.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: churn-api
+  namespace: ml-prod
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [ml.example.com]
+      secretName: churn-api-tls
+  rules:
+    - host: ml.example.com
+      http:
+        paths:
+          - path: /churn
+            pathType: Prefix
+            backend:
+              service:
+                name: churn-api
+                port: {name: http}

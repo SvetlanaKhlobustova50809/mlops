@@ -1,0 +1,39 @@
+# Локальный стенд: сервис модели + MLflow Tracking Server.
+# docker compose up --build
+services:
+  churn-api:
+    build: .
+    image: telco-churn-service:1.0.0
+    container_name: churn-api
+    ports:
+      - "8000:8000"
+    environment:
+      THRESHOLD: "0.5"
+      LOG_LEVEL: "INFO"
+      WORKERS: "1"
+      SERVICE_VERSION: "1.0.0"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {cpus: "1.0", memory: 1G}
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.17.2
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns
+      - ./mlartifacts:/mlartifacts
+    command: >
+      mlflow server
+      --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlruns/mlflow.db
+      --default-artifact-root /mlartifacts
+    restart: unless-stopped

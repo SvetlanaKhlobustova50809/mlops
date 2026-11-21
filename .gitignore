@@ -1,0 +1,23 @@
+# --- данные и модели: версионируются DVC, а не Git ---
+/data/raw
+/data/processed
+/models/model.joblib
+# в Git остаются только .dvc-файлы, dvc.lock, params.yaml и код
+
+# --- артефакты трекинга и отчёты (тяжёлые, восстановимы) ---
+/mlruns/
+/mlartifacts/
+/reports/monitoring/
+/reports/monitoring_drift_demo/
+mlflow.db
+
+# --- окружение ---
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+.DS_Store
+
+# локальный DVC remote (в реальном проекте -- S3)
+/.dvcstore/

@@ -1,0 +1,9 @@
+[core]
+    remote = localremote
+
+# Локальный remote по умолчанию, чтобы пайплайн работал сразу после клонирования.
+# В реальном проекте заменяется на объектное хранилище одной командой:
+#   dvc remote add -d s3remote s3://my-bucket/dvcstore
+#   dvc remote modify s3remote endpointurl https://storage.yandexcloud.net
+['remote "localremote"']
+    url = ../.dvcstore

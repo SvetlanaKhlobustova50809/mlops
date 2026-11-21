@@ -1,0 +1,40 @@
+# Единый источник гиперпараметров пайплайна.
+# Файл версионируется в Git -> любой эксперимент воспроизводим по коммиту.
+
+dataset:
+  kaggle_ref: blastchar/telco-customer-churn      # Kaggle dataset slug
+  csv_name: WA_Fn-UseC_-Telco-Customer-Churn.csv
+  target: Churn
+  id_col: customerID
+
+prepare:
+  test_size: 0.2
+  random_state: 42
+  stratify: true
+
+train:
+  model_type: gradient_boosting   # logistic_regression | random_forest | gradient_boosting
+  random_state: 42
+  logistic_regression:
+    C: 1.0
+    max_iter: 1000
+  random_forest:
+    n_estimators: 400
+    max_depth: 12
+    min_samples_leaf: 5
+    class_weight: balanced
+  gradient_boosting:
+    n_estimators: 300
+    learning_rate: 0.05
+    max_depth: 3
+    subsample: 0.9
+
+evaluate:
+  threshold: 0.5
+  # порог приёмки модели для CI/CD-гейта
+  min_roc_auc: 0.80
+
+mlflow:
+  tracking_uri: ./mlruns
+  experiment_name: telco-churn
+  registered_model_name: telco-churn-clf

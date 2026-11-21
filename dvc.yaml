@@ -1,0 +1,87 @@
+# Этапы ML-пайплайна.
+# DVC строит DAG по deps/outs и пересчитывает ТОЛЬКО те стадии, у которых
+# изменились код, параметры или входные данные (кеш по хешам).
+# dvc.lock фиксирует хеши всех входов/выходов -> воспроизводимость прогона.
+
+stages:
+  download:
+    cmd: python src/download_data.py
+    deps:
+      - src/download_data.py
+      - src/config.py
+    params:
+      - dataset
+    outs:
+      - data/raw/telco_churn.csv
+      - data/raw/dataset.meta.json:
+          cache: false
+
+  prepare:
+    cmd: python src/prepare_data.py
+    deps:
+      - src/prepare_data.py
+      - src/config.py
+      - data/raw/telco_churn.csv
+    params:
+      - dataset
+      - prepare
+    outs:
+      - data/processed/train.csv
+      - data/processed/test.csv
+    metrics:
+      - reports/data_validation.json:
+          cache: false
+
+  train:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - src/config.py
+      - data/processed/train.csv
+      - data/processed/test.csv
+    params:
+      - train
+      - evaluate.threshold
+      - mlflow
+    outs:
+      - models/model.joblib
+      - models/model_card.json:
+          cache: false
+    metrics:
+      - metrics/metrics.json:
+          cache: false
+    plots:
+      - reports/roc_curve.png:
+          cache: false
+      - reports/pr_curve.png:
+          cache: false
+      - reports/confusion_matrix.png:
+          cache: false
+      - reports/feature_importance.csv:
+          cache: false
+          x: feature
+          y: importance_mean
+
+  evaluate:
+    # quality gate: падает, если модель хуже порога или хуже baseline
+    cmd: python src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - models/model.joblib
+      - metrics/metrics.json
+      - data/processed/test.csv
+    params:
+      - evaluate
+
+  monitor:
+    # отчёты Evidently: дрейф данных/таргета, качество данных, качество модели
+    cmd: python src/drift_report.py
+    deps:
+      - src/drift_report.py
+      - models/model.joblib
+      - data/processed/train.csv
+      - data/processed/test.csv
+    outs:
+      - reports/monitoring:
+          cache: false
+          persist: true

@@ -1,0 +1,82 @@
+# Deployment -- основной объект для stateless-инференса модели.
+# Держит заданное число реплик (ReplicaSet), умеет RollingUpdate с откатом.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: churn-api
+  namespace: ml-prod
+  labels:
+    app: churn-api
+    version: "1.0.0"
+  annotations:
+    # Полная трассировка артефакта: по этим аннотациям из работающего Pod'а
+    # восстанавливается эксперимент, код и версия данных.
+    mlops/mlflow-run-id: "434d75f995c64aeea9d47f58f9210bf4"
+    mlops/git-commit: "5ce663a38a82599b6c2fc63b07503cf89421ae65"
+    mlops/model-registry-uri: "models:/telco-churn-clf@production"
+    mlops/dataset: "kaggle:blastchar/telco-customer-churn"
+    mlops/dataset-sha256: "88be4b93fbe0cc83421af1c503794c97c342eca914c1576db7c276e61d61358a"
+    mlops/test-roc-auc: "0.8428"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5          # хранить 5 прошлых ReplicaSet -> быстрый rollback
+  strategy:
+    type: RollingUpdate            # обновление без простоя
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0            # 0 -> трафик не теряется во время релиза
+  selector:
+    matchLabels:
+      app: churn-api
+  template:
+    metadata:
+      labels:
+        app: churn-api
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: telco-churn-service:1.0.0   # immutable tag, никогда не :latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef: {name: churn-config}
+            - secretRef: {name: churn-secrets}
+          resources:
+            # requests -- для планировщика и HPA; limits -- защита узла от OOM.
+            requests: {cpu: "250m", memory: "512Mi"}
+            limits:   {cpu: "1000m", memory: "1Gi"}
+          # startupProbe: модель грузится дольше, чем поднимается процесс.
+          # Пока она не прошла, liveness/readiness не применяются -> нет
+          # ложных перезапусков на холодном старте.
+          startupProbe:
+            httpGet: {path: /ready, port: http}
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:            # процесс завис -> перезапустить контейнер
+            httpGet: {path: /health, port: http}
+            periodSeconds: 15
+            timeoutSeconds: 3
+          readinessProbe:           # модель не готова -> убрать Pod из Service
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: tmp
+          emptyDir: {}

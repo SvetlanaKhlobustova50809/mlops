@@ -1,0 +1,8 @@
+# Namespace -- логическая изоляция ML-сервисов от остального кластера:
+# отдельные квоты, RBAC, сетевые политики.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-prod
+  labels:
+    app.kubernetes.io/part-of: telco-churn

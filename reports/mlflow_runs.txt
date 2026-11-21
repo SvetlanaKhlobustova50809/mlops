@@ -1,0 +1,22 @@
+
+Эксперимент: telco-churn (experiment_id=234665591296970414), прогонов: 6
+
+                              run              модель  CV ROC-AUC  test ROC-AUC  test PR-AUC  test F1  overfit gap data sha256
+                   release-v1.0.0   gradient_boosting      0.8481        0.8428       0.6591   0.5835       0.0523  88be4b93fb
+                after-lint-verify   gradient_boosting      0.8481        0.8428       0.6591   0.5835       0.0523  88be4b93fb
+              gb-final-registered   gradient_boosting      0.8481        0.8428       0.6591   0.5835       0.0523  88be4b93fb
+gradient_boosting-20261121-122044   gradient_boosting      0.8481        0.8428       0.6591   0.5835       0.0523  88be4b93fb
+                           rf-400       random_forest      0.8450        0.8424       0.6509   0.6318       0.0860  88be4b93fb
+                  baseline-logreg logistic_regression      0.8462        0.8421       0.6343   0.6040       0.0072  88be4b93fb
+
+Лучший прогон: release-v1.0.0 (run_id=434d75f995c64aeea9d47f58f9210bf4), test ROC-AUC = 0.8428
+
+MLflow Model Registry -- модель 'telco-churn-clf':
+  version 1: aliases=[previous], run_id=0a4e928bf2d1459d895c8f8e1c80485e, status=READY
+               tags: {'validated_by': 'src/evaluate.py quality gate', 'test_roc_auc': '0.8428'}
+  version 2: aliases=[production], run_id=434d75f995c64aeea9d47f58f9210bf4, status=READY
+               tags: {'validated_by': 'src/evaluate.py quality gate', 'test_roc_auc': '0.8428', 'git_commit': '5ce663a38a82599b6c2fc63b07503cf89421ae65'}
+
+Продвижение версии в production (современный API -- алиасы):
+  client.set_registered_model_alias('telco-churn-clf', 'production', '2')
+  сервис забирает модель по алиасу: MLFLOW_MODEL_URI=models:/telco-churn-clf@production

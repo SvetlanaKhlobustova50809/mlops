@@ -1,0 +1,67 @@
+# Canary-релиз модели v1.1.0 на 10% трафика.
+# Второй Deployment + второй Service + Ingress с canary-аннотациями.
+# Метрики сравниваются по label version -> при деградации canary-weight = 0.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: churn-api-canary
+  namespace: ml-prod
+  labels: {app: churn-api-canary, version: "1.1.0"}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: churn-api-canary}
+  template:
+    metadata:
+      labels: {app: churn-api-canary, version: "1.1.0"}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: api
+          image: telco-churn-service:1.1.0
+          ports: [{name: http, containerPort: 8000}]
+          envFrom:
+            - configMapRef: {name: churn-config}
+          resources:
+            requests: {cpu: "250m", memory: "512Mi"}
+            limits:   {cpu: "1000m", memory: "1Gi"}
+          readinessProbe:
+            httpGet: {path: /ready, port: http}
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: churn-api-canary
+  namespace: ml-prod
+spec:
+  selector: {app: churn-api-canary}
+  ports: [{name: http, port: 80, targetPort: http}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: churn-api-canary
+  namespace: ml-prod
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "10"   # 10% трафика на новую модель
+    # для A/B-теста вместо веса можно закреплять группу по заголовку:
+    # nginx.ingress.kubernetes.io/canary-by-header: "X-Model-Variant"
+    # nginx.ingress.kubernetes.io/canary-by-header-value: "B"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ml.example.com
+      http:
+        paths:
+          - path: /churn
+            pathType: Prefix
+            backend:
+              service:
+                name: churn-api-canary
+                port: {name: http}

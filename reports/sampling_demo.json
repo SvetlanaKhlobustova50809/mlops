@@ -1,0 +1,40 @@
+{
+  "population": {
+    "n_rows": 5634,
+    "churn_rate": 0.2654,
+    "mean_monthly_charges": 64.93
+  },
+  "sample_size": 300,
+  "methods": {
+    "simple_random": {
+      "churn_rate": 0.2667,
+      "churn_rate_std_over_50_runs": 0.021,
+      "mean_monthly_charges": 65.64
+    },
+    "stratified": {
+      "churn_rate": 0.2667,
+      "churn_rate_std_over_50_runs": 0.0,
+      "mean_monthly_charges": 63.97
+    },
+    "balanced_oversample": {
+      "churn_rate": 0.5,
+      "mean_monthly_charges": 67.64,
+      "note": "смещает baseline: годится для обучения, не для оценки качества"
+    },
+    "weighted_by_revenue": {
+      "churn_rate": 0.3167,
+      "mean_monthly_charges": 76.39,
+      "note": "выборка смещена к дорогим клиентам -- нужна коррекция веса при оценке"
+    },
+    "systematic": {
+      "churn_rate": 0.2333,
+      "mean_monthly_charges": 64.86,
+      "note": "риск смещения при периодичности в порядке строк"
+    },
+    "reservoir_stream": {
+      "churn_rate": 0.2667,
+      "mean_monthly_charges": 66.27,
+      "note": "для потоков неизвестной длины: один проход, O(k) памяти"
+    }
+  }
+}
